@@ -13,7 +13,7 @@ from setting import *
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Update balancesheet and fina_indicator caches based on daily.hdf symbols/dates."
+        description="Update balancesheet, fina_indicator, income, cashflow, forecast, express caches based on daily.hdf symbols/dates."
     )
     parser.add_argument("--daily", default="daily.hdf", help="path to daily.hdf")
     parser.add_argument(
@@ -25,6 +25,26 @@ def parse_args():
         "--fina-path",
         default="data/fina_indicator.20070101-20251231.csv",
         help="fina_indicator cache csv path",
+    )
+    parser.add_argument(
+        "--income-path",
+        default="data/income.20070101-20251231.csv",
+        help="income cache csv path",
+    )
+    parser.add_argument(
+        "--cashflow-path",
+        default="data/cashflow.20070101-20251231.csv",
+        help="cashflow cache csv path",
+    )
+    parser.add_argument(
+        "--forecast-path",
+        default="data/forecast.20070101-20251231.csv",
+        help="forecast cache csv path",
+    )
+    parser.add_argument(
+        "--express-path",
+        default="data/express.20070101-20251231.csv",
+        help="express cache csv path",
     )
     parser.add_argument(
         "--checkpoint",
@@ -90,11 +110,19 @@ def main():
 
     balance_df = load_or_empty(args.balance_path)
     fina_df = load_or_empty(args.fina_path)
+    income_df = load_or_empty(args.income_path)
+    cashflow_df = load_or_empty(args.cashflow_path)
+    forecast_df = load_or_empty(args.forecast_path)
+    express_df = load_or_empty(args.express_path)
 
     pro = ts.pro_api(token)
 
     balance_new = []
     fina_new = []
+    income_new = []
+    cashflow_new = []
+    forecast_new = []
+    express_new = []
 
     total = int(symbols.size)
     start_ts = time.time()
@@ -118,9 +146,17 @@ def main():
 
         last_bal = latest_ann_date(balance_df, ts_sym)
         last_fina = latest_ann_date(fina_df, ts_sym)
+        last_income = latest_ann_date(income_df, ts_sym)
+        last_cashflow = latest_ann_date(cashflow_df, ts_sym)
+        last_forecast = latest_ann_date(forecast_df, ts_sym)
+        last_express = latest_ann_date(express_df, ts_sym)
 
         bal_start = start_date if last_bal is None else last_bal + 1
         fina_start = start_date if last_fina is None else last_fina + 1
+        income_start = start_date if last_income is None else last_income + 1
+        cashflow_start = start_date if last_cashflow is None else last_cashflow + 1
+        forecast_start = start_date if last_forecast is None else last_forecast + 1
+        express_start = start_date if last_express is None else last_express + 1
 
         if bal_start <= end_date:
             try:
@@ -138,6 +174,38 @@ def main():
             except Exception as exc:
                 print(f"fina_indicator failed for {ts_sym}: {exc}")
 
+        if income_start <= end_date:
+            try:
+                df_income = fetch_incremental(pro.income, ts_sym, income_start, end_date_str)
+                if df_income is not None and not df_income.empty:
+                    income_new.append(df_income)
+            except Exception as exc:
+                print(f"income failed for {ts_sym}: {exc}")
+
+        if cashflow_start <= end_date:
+            try:
+                df_cashflow = fetch_incremental(pro.cashflow, ts_sym, cashflow_start, end_date_str)
+                if df_cashflow is not None and not df_cashflow.empty:
+                    cashflow_new.append(df_cashflow)
+            except Exception as exc:
+                print(f"cashflow failed for {ts_sym}: {exc}")
+
+        if forecast_start <= end_date:
+            try:
+                df_forecast = fetch_incremental(pro.forecast, ts_sym, forecast_start, end_date_str)
+                if df_forecast is not None and not df_forecast.empty:
+                    forecast_new.append(df_forecast)
+            except Exception as exc:
+                print(f"forecast failed for {ts_sym}: {exc}")
+
+        if express_start <= end_date:
+            try:
+                df_express = fetch_incremental(pro.express, ts_sym, express_start, end_date_str)
+                if df_express is not None and not df_express.empty:
+                    express_new.append(df_express)
+            except Exception as exc:
+                print(f"express failed for {ts_sym}: {exc}")
+
         time.sleep(args.sleep)
 
         if idx % 50 == 0 or idx == total:
@@ -151,6 +219,26 @@ def main():
                 fina_df = fina_df.drop_duplicates()
                 fina_df.to_csv(args.fina_path, index=False)
                 fina_new = []
+            if income_new:
+                income_df = pd.concat([income_df] + income_new, ignore_index=True)
+                income_df = income_df.drop_duplicates()
+                income_df.to_csv(args.income_path, index=False)
+                income_new = []
+            if cashflow_new:
+                cashflow_df = pd.concat([cashflow_df] + cashflow_new, ignore_index=True)
+                cashflow_df = cashflow_df.drop_duplicates()
+                cashflow_df.to_csv(args.cashflow_path, index=False)
+                cashflow_new = []
+            if forecast_new:
+                forecast_df = pd.concat([forecast_df] + forecast_new, ignore_index=True)
+                forecast_df = forecast_df.drop_duplicates()
+                forecast_df.to_csv(args.forecast_path, index=False)
+                forecast_new = []
+            if express_new:
+                express_df = pd.concat([express_df] + express_new, ignore_index=True)
+                express_df = express_df.drop_duplicates()
+                express_df.to_csv(args.express_path, index=False)
+                express_new = []
             with open(args.checkpoint, "w") as f:
                 f.write(str(idx))
 
@@ -171,6 +259,22 @@ def main():
         fina_df = pd.concat([fina_df] + fina_new, ignore_index=True)
         fina_df = fina_df.drop_duplicates()
         fina_df.to_csv(args.fina_path, index=False)
+    if income_new:
+        income_df = pd.concat([income_df] + income_new, ignore_index=True)
+        income_df = income_df.drop_duplicates()
+        income_df.to_csv(args.income_path, index=False)
+    if cashflow_new:
+        cashflow_df = pd.concat([cashflow_df] + cashflow_new, ignore_index=True)
+        cashflow_df = cashflow_df.drop_duplicates()
+        cashflow_df.to_csv(args.cashflow_path, index=False)
+    if forecast_new:
+        forecast_df = pd.concat([forecast_df] + forecast_new, ignore_index=True)
+        forecast_df = forecast_df.drop_duplicates()
+        forecast_df.to_csv(args.forecast_path, index=False)
+    if express_new:
+        express_df = pd.concat([express_df] + express_new, ignore_index=True)
+        express_df = express_df.drop_duplicates()
+        express_df.to_csv(args.express_path, index=False)
 
 
 if __name__ == "__main__":

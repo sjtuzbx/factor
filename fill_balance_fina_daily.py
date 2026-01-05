@@ -24,6 +24,47 @@ FINA_META = {
     "update_flag",
 }
 
+INCOME_META = {
+    "ts_code",
+    "ann_date",
+    "f_ann_date",
+    "end_date",
+    "report_type",
+    "comp_type",
+    "end_type",
+    "update_flag",
+}
+
+CASHFLOW_META = {
+    "ts_code",
+    "ann_date",
+    "f_ann_date",
+    "end_date",
+    "report_type",
+    "comp_type",
+    "end_type",
+    "update_flag",
+}
+
+FORECAST_META = {
+    "ts_code",
+    "ann_date",
+    "end_date",
+    "type",
+    "first_ann_date",
+    "summary",
+    "change_reason",
+    "update_flag",
+}
+
+EXPRESS_META = {
+    "ts_code",
+    "ann_date",
+    "end_date",
+    "perf_summary",
+    "update_flag",
+}
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -40,8 +81,32 @@ def parse_args():
         default="data/fina_indicator.20070101-20251231.csv",
         help="fina_indicator cache csv path",
     )
+    parser.add_argument(
+        "--income-path",
+        default="data/income.20070101-20251231.csv",
+        help="income cache csv path",
+    )
+    parser.add_argument(
+        "--cashflow-path",
+        default="data/cashflow.20070101-20251231.csv",
+        help="cashflow cache csv path",
+    )
+    parser.add_argument(
+        "--forecast-path",
+        default="data/forecast.20070101-20251231.csv",
+        help="forecast cache csv path",
+    )
+    parser.add_argument(
+        "--express-path",
+        default="data/express.20070101-20251231.csv",
+        help="express cache csv path",
+    )
     parser.add_argument("--balance-prefix", default="balance_", help="prefix for balancesheet fields")
     parser.add_argument("--fina-prefix", default="fina_", help="prefix for fina_indicator fields")
+    parser.add_argument("--income-prefix", default="income_", help="prefix for income fields")
+    parser.add_argument("--cashflow-prefix", default="cashflow_", help="prefix for cashflow fields")
+    parser.add_argument("--forecast-prefix", default="forecast_", help="prefix for forecast fields")
+    parser.add_argument("--express-prefix", default="express_", help="prefix for express fields")
     parser.add_argument("--round", type=int, default=3, help="round decimals for numeric fields")
     parser.add_argument("--start-index", type=int, default=0, help="start symbol index")
     parser.add_argument("--end-index", type=int, default=None, help="end symbol index (exclusive)")
@@ -54,6 +119,11 @@ def parse_args():
         "--checkpoint",
         default="fill_balance_fina_daily.progress",
         help="checkpoint file path",
+    )
+    parser.add_argument(
+        "--reset-checkpoint",
+        action="store_true",
+        help="delete existing checkpoint file before running",
     )
     parser.add_argument("--flush-every", type=int, default=50, help="save checkpoint every N symbols")
     return parser.parse_args()
@@ -232,8 +302,15 @@ def main():
 
     balance_df = pd.read_csv(args.balance_path) if os.path.exists(args.balance_path) else pd.DataFrame()
     fina_df = pd.read_csv(args.fina_path) if os.path.exists(args.fina_path) else pd.DataFrame()
+    income_df = pd.read_csv(args.income_path) if os.path.exists(args.income_path) else pd.DataFrame()
+    cashflow_df = pd.read_csv(args.cashflow_path) if os.path.exists(args.cashflow_path) else pd.DataFrame()
+    forecast_df = pd.read_csv(args.forecast_path) if os.path.exists(args.forecast_path) else pd.DataFrame()
+    express_df = pd.read_csv(args.express_path) if os.path.exists(args.express_path) else pd.DataFrame()
 
     start_index = args.start_index
+    if args.reset_checkpoint and os.path.exists(args.checkpoint):
+        os.remove(args.checkpoint)
+
     if os.path.exists(args.checkpoint):
         try:
             with open(args.checkpoint, "r") as fp:
@@ -272,6 +349,70 @@ def main():
             "ann_date",
             args.fina_prefix,
             FINA_META,
+            {"ann_date", "end_date"},
+            args.round,
+            start_index,
+            args.end_index,
+            args.checkpoint,
+            args.flush_every,
+            only_meta=args.only_meta,
+        )
+        fill_table(
+            f,
+            valid_dates,
+            symbols,
+            income_df,
+            "ann_date",
+            args.income_prefix,
+            INCOME_META,
+            {"ann_date", "f_ann_date", "end_date"},
+            args.round,
+            start_index,
+            args.end_index,
+            args.checkpoint,
+            args.flush_every,
+            only_meta=args.only_meta,
+        )
+        fill_table(
+            f,
+            valid_dates,
+            symbols,
+            cashflow_df,
+            "ann_date",
+            args.cashflow_prefix,
+            CASHFLOW_META,
+            {"ann_date", "f_ann_date", "end_date"},
+            args.round,
+            start_index,
+            args.end_index,
+            args.checkpoint,
+            args.flush_every,
+            only_meta=args.only_meta,
+        )
+        fill_table(
+            f,
+            valid_dates,
+            symbols,
+            forecast_df,
+            "ann_date",
+            args.forecast_prefix,
+            FORECAST_META,
+            {"ann_date", "end_date"},
+            args.round,
+            start_index,
+            args.end_index,
+            args.checkpoint,
+            args.flush_every,
+            only_meta=args.only_meta,
+        )
+        fill_table(
+            f,
+            valid_dates,
+            symbols,
+            express_df,
+            "ann_date",
+            args.express_prefix,
+            EXPRESS_META,
             {"ann_date", "end_date"},
             args.round,
             start_index,

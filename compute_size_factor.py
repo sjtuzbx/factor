@@ -79,9 +79,8 @@ def ensure_dataset(f, name, shape):
 
 def main():
     h5_path = "daily.hdf"
-    tmp_root = os.path.join(os.getcwd(), "_cb_cache_tmp")
-    os.makedirs(tmp_root, exist_ok=True)
-    ensure_symlink(os.path.abspath(h5_path), os.path.join(tmp_root, "daily.hdf"))
+    # Use the local daily.hdf directly to avoid symlink indirection.
+    tmp_root = os.getcwd()
 
     symbols, dates = load_symbols_dates(h5_path)
     # Exclude T* symbols if present.

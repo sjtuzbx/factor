@@ -1,0 +1,123 @@
+flowchart LR
+  subgraph Daily[ daily.hdf fields ]
+    circ_mv
+    close
+    adj_factor
+    is_listed_in_5days
+    turnover_rate
+    industry
+    total_mv
+    balance_total_hldr_eqy_exc_min_int
+    balance_total_liab
+    balance_total_assets
+    balance_total_cur_liab
+    balance_cash_reser_cb
+    balance_st_borr
+    balance_lt_borr
+    balance_cb_borr
+    balance_pledge_borr
+    balance_end_date
+    income_total_revenue
+    income_revenue
+    income_n_income
+    income_oper_cost
+    income_ebit
+    income_basic_eps
+    income_div_payt
+    income_ann_date
+    income_end_date
+    cashflow_n_cashflow_act
+    cashflow_n_cashflow_inv_act
+    cashflow_depr_fa_coga_dpba
+    cashflow_amort_intang_assets
+    cashflow_c_pay_acq_const_fiolta
+    cashflow_ann_date
+    cashflow_end_date
+    fina_profit_dedt
+    fina_total_revenue_ps
+    fina_ann_date
+    fina_end_date
+    float_share
+    ANALYST_NP_FWD12M_MEAN
+    ANALYST_NP_CAGR_2Y
+    ANALYST_NP_RRIBS
+    ANALYST_EP_CHANGE
+    ANALYST_EPS_CHANGE
+    ANALYST_RD_6M_MEAN
+    Long_Relative_strength
+    Long_Historical_alpha
+  end
+
+  subgraph Index[index.daily.hdf]
+    index_close["000300.SSE close"]
+  end
+
+  compute_size_factor.py --> SIZE["Size: LNCAP/MIDCAP/SIZE"]
+  update_vol_cache_all.py --> VOL["Volatility"]
+  update_liquidity_cache_all.py --> LIQ["Liquidity"]
+  update_daily_momentum.py --> MOM["Momentum + Long_*"]
+  compute_leverage_factors.py --> QUAL["Quality"]
+  compute_leverage_factors.py --> VAL["Value"]
+  compute_leverage_factors.py --> GRO["Growth"]
+  compute_leverage_factors.py --> SEN["Sentiment"]
+  compute_leverage_factors.py --> DIV["DividendYield"]
+  update_report_rc_cache.py --> report_rc["report_rc CSV"]
+  report_rc --> update_analyst_np_std_mv.py
+  update_analyst_np_std_mv.py --> ANALYST["Analyst Signals"]
+
+  circ_mv --> compute_size_factor.py
+
+  close --> update_vol_cache_all.py
+  adj_factor --> update_vol_cache_all.py
+  is_listed_in_5days --> update_vol_cache_all.py
+  index_close --> update_vol_cache_all.py
+
+  turnover_rate --> update_liquidity_cache_all.py
+
+  close --> update_daily_momentum.py
+  adj_factor --> update_daily_momentum.py
+  is_listed_in_5days --> update_daily_momentum.py
+  industry --> update_daily_momentum.py
+  circ_mv --> update_daily_momentum.py
+  index_close --> update_daily_momentum.py
+
+  balance_total_liab --> compute_leverage_factors.py
+  balance_total_assets --> compute_leverage_factors.py
+  balance_total_cur_liab --> compute_leverage_factors.py
+  balance_cash_reser_cb --> compute_leverage_factors.py
+  balance_st_borr --> compute_leverage_factors.py
+  balance_lt_borr --> compute_leverage_factors.py
+  balance_cb_borr --> compute_leverage_factors.py
+  balance_pledge_borr --> compute_leverage_factors.py
+  balance_end_date --> compute_leverage_factors.py
+  income_total_revenue --> compute_leverage_factors.py
+  income_revenue --> compute_leverage_factors.py
+  income_n_income --> compute_leverage_factors.py
+  income_oper_cost --> compute_leverage_factors.py
+  income_ebit --> compute_leverage_factors.py
+  income_basic_eps --> compute_leverage_factors.py
+  income_div_payt --> compute_leverage_factors.py
+  income_ann_date --> compute_leverage_factors.py
+  income_end_date --> compute_leverage_factors.py
+  cashflow_n_cashflow_act --> compute_leverage_factors.py
+  cashflow_n_cashflow_inv_act --> compute_leverage_factors.py
+  cashflow_depr_fa_coga_dpba --> compute_leverage_factors.py
+  cashflow_amort_intang_assets --> compute_leverage_factors.py
+  cashflow_c_pay_acq_const_fiolta --> compute_leverage_factors.py
+  cashflow_ann_date --> compute_leverage_factors.py
+  cashflow_end_date --> compute_leverage_factors.py
+  fina_profit_dedt --> compute_leverage_factors.py
+  fina_total_revenue_ps --> compute_leverage_factors.py
+  fina_ann_date --> compute_leverage_factors.py
+  fina_end_date --> compute_leverage_factors.py
+  float_share --> compute_leverage_factors.py
+  total_mv --> compute_leverage_factors.py
+  balance_total_hldr_eqy_exc_min_int --> compute_leverage_factors.py
+  ANALYST_NP_FWD12M_MEAN --> compute_leverage_factors.py
+  ANALYST_NP_CAGR_2Y --> compute_leverage_factors.py
+  ANALYST_NP_RRIBS --> compute_leverage_factors.py
+  ANALYST_EP_CHANGE --> compute_leverage_factors.py
+  ANALYST_EPS_CHANGE --> compute_leverage_factors.py
+  ANALYST_RD_6M_MEAN --> compute_leverage_factors.py
+  Long_Relative_strength --> compute_leverage_factors.py
+  Long_Historical_alpha --> compute_leverage_factors.py

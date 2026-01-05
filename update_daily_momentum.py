@@ -27,6 +27,30 @@ def get_exponent_weight(window, half_life, is_standardize=True):
     return W
 
 
+def _wls_beta(X, Y, W_sqrt):
+    if np.isnan(X).any() or np.isnan(Y).any():
+        W_full = np.diag(W_sqrt ** 2)
+        return np.linalg.pinv(X.T @ W_full @ X) @ X.T @ W_full @ Y
+    Xw = X * W_sqrt[:, None]
+    if Y.ndim == 1:
+        Yw = Y * W_sqrt
+    else:
+        Yw = Y * W_sqrt[:, None]
+    try:
+        return np.linalg.lstsq(Xw, Yw, rcond=None)[0]
+    except np.linalg.LinAlgError:
+        W_full = np.diag(W_sqrt ** 2)
+        return np.linalg.pinv(X.T @ W_full @ X) @ X.T @ W_full @ Y
+
+
+def _nanmean_axis0_no_warn(arr):
+    sums = np.nansum(arr, axis=0)
+    counts = np.isfinite(arr).sum(axis=0)
+    out = sums / counts
+    out[counts == 0] = np.nan
+    return out
+
+
 def _compute_for_idx(
     idx,
     today,
@@ -154,6 +178,40 @@ def main():
     w_strev = get_exponent_weight(window=21, half_life=5)
     w_rs = get_exponent_weight(window=252, half_life=126)
     w_ind = get_exponent_weight(window=126, half_life=21)
+    long_window = 750
+    long_half_life = 260
+    long_lag = 273
+    long_avg = 11
+    w_long = get_exponent_weight(window=long_window, half_life=long_half_life)
+    w_long_sqrt = np.sqrt(w_long)
+    mkt_symbol = "000300.SSE"
+    has_mkt = mkt_symbol in ret_df.columns
+    mkt_ret = None
+    if not has_mkt:
+        mkt_ret = np.full(len(eq_dates), np.nan, dtype=np.float64)
+        try:
+            with h5.File("index.daily.hdf", "r") as f:
+                idx_symbols = np.array([x.decode("utf-8") for x in f["symbols"][()]])
+                if mkt_symbol in idx_symbols:
+                    mkt_idx = int(np.where(idx_symbols == mkt_symbol)[0][0])
+                    idx_dates = f["dates"][()]
+                    close_idx = f["close"][:, mkt_idx]
+                    if "pre_close" in f:
+                        pre_close_idx = f["pre_close"][:, mkt_idx]
+                        with np.errstate(divide="ignore", invalid="ignore"):
+                            idx_ret = close_idx / pre_close_idx - 1
+                    else:
+                        lag = np.r_[np.nan, close_idx[:-1]]
+                        with np.errstate(divide="ignore", invalid="ignore"):
+                            idx_ret = close_idx / lag - 1
+                    pos = np.searchsorted(eq_dates, idx_dates)
+                    mask = (pos >= 0) & (pos < len(eq_dates)) & (eq_dates[pos] == idx_dates)
+                    mkt_ret[pos[mask]] = idx_ret[mask]
+                    has_mkt = True
+                else:
+                    print("index.daily.hdf missing 000300.SSE; Long_Historical_alpha will be NaN.")
+        except Exception as exc:
+            print(f"index.daily.hdf read failed: {exc}")
 
     start_idx = int(np.searchsorted(eq_dates, start_date))
     end_idx = int(np.searchsorted(eq_dates, end_date))
@@ -163,8 +221,49 @@ def main():
         end_idx -= 1
     end_idx = max(end_idx, start_idx)
 
+    raw_start = max(0, start_idx - long_lag - (long_avg - 1))
+    long_rs_raw = np.full((len(eq_dates), len(all_symbols)), np.nan, dtype=np.float64)
+    long_alpha_raw = np.full((len(eq_dates), len(all_symbols)), np.nan, dtype=np.float64)
+
+    for idx in range(raw_start, end_idx + 1):
+        if idx < long_window - 1:
+            continue
+        win = ret_df.iloc[idx - long_window + 1: idx + 1].copy()
+        missing_ratio = win.isna().sum(axis=0) / long_window
+        keep = missing_ratio <= 0.1
+        win = win.loc[:, keep].fillna(0.0)
+        if not win.empty:
+            log_ret = np.log1p(win)
+            rs_vals = np.sum(w_long.reshape(-1, 1) * log_ret.values, axis=0)
+            long_rs_raw[idx, keep.values] = rs_vals
+
+        if has_mkt:
+            if mkt_symbol in win.columns:
+                mkt = win[mkt_symbol].values
+                cols = win.columns[win.columns != mkt_symbol]
+                Y = win.loc[:, cols].values
+            else:
+                mkt = mkt_ret[idx - long_window + 1: idx + 1]
+                cols = win.columns
+                Y = win.values
+            valid_mask = np.isfinite(mkt)
+            if valid_mask.sum() >= long_half_life:
+                X = np.c_[np.ones(valid_mask.sum()), mkt[valid_mask]]
+                Y = Y[valid_mask]
+                beta = _wls_beta(X, Y, w_long_sqrt[valid_mask])
+                alpha = beta[0]
+                long_alpha_raw[idx, ret_df.columns.get_indexer(cols)] = alpha
+
     with h5.File("daily.hdf", "a") as f:
-        for col in ["Short_Term_reversal", "Seasonality", "Industry_Momentum", "Relative_strength", "Momentum"]:
+        for col in [
+            "Short_Term_reversal",
+            "Seasonality",
+            "Industry_Momentum",
+            "Relative_strength",
+            "Momentum",
+            "Long_Relative_strength",
+            "Long_Historical_alpha",
+        ]:
             if col not in f:
                 f.create_dataset(col, (dates.shape[0], all_symbols.shape[0]), maxshape=(None, None))
 
@@ -204,6 +303,16 @@ def main():
             f["Industry_Momentum"][idx] = ind_mom.values.astype(float)
             f["Relative_strength"][idx] = relative_strength.values.astype(float)
             f["Momentum"][idx] = momentum.values.astype(float)
+
+            lag_start = idx - long_lag - (long_avg - 1)
+            lag_end = idx - long_lag
+            if lag_start >= 0 and lag_end >= lag_start:
+                rs_window = long_rs_raw[lag_start:lag_end + 1]
+                alpha_window = long_alpha_raw[lag_start:lag_end + 1]
+                long_rs = -_nanmean_axis0_no_warn(rs_window)
+                long_alpha = -_nanmean_axis0_no_warn(alpha_window)
+                f["Long_Relative_strength"][idx] = long_rs.astype(float)
+                f["Long_Historical_alpha"][idx] = long_alpha.astype(float)
 
             if args.log_every > 0 and (i % args.log_every == 0 or i == total):
                 print(f"progress {i}/{total} date={today}")

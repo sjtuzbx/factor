@@ -259,15 +259,22 @@ def cal_volatility_opt(ret, close, pre_close, start_date=None, end_date=None, wi
                     hist_sigma_lack[c] = sigma[j]
                     beta_lack[c] = beta_tmp[1, j]
                     hist_alpha_lack[c] = beta_tmp[0, j]
-        beta_lack = pd.Series(beta_lack, name=dates[end])
+        beta_lack = pd.Series(beta_lack, name=dates[end], dtype=float)
         
         # from IPython import embed
         # embed()
-        hist_sigma_lack = pd.Series(hist_sigma_lack, name=dates[end])
-        hist_alpha_lack = pd.Series(hist_alpha_lack, name=dates[end])
-        beta.append(pd.concat([beta_full, beta_lack]).sort_index())
+        hist_sigma_lack = pd.Series(hist_sigma_lack, name=dates[end], dtype=float)
+        hist_alpha_lack = pd.Series(hist_alpha_lack, name=dates[end], dtype=float)
+        beta_row = pd.concat([beta_full, beta_lack]).sort_index()
+        if "000001.SZE" in beta_row.index and not np.isfinite(beta_row.loc["000001.SZE"]):
+            print(f"warn: 000001.SZE beta nan at {int(dates[end])}")
+        beta.append(beta_row)
         hist_sigma.append(pd.concat([hist_sigma_full, hist_sigma_lack]).sort_index())
         hist_alpha.append(pd.concat([hist_alpha_full, hist_alpha_lack]).sort_index())
+    
+    # from IPython import embed
+    # embed()
+    
     beta = pd.concat(beta, axis=1).T
     beta = pd.melt(beta.reset_index(), id_vars="index").dropna()
     beta.columns = ["time", "code", "BETA"]
@@ -279,6 +286,8 @@ def cal_volatility_opt(ret, close, pre_close, start_date=None, end_date=None, wi
     hist_alpha.columns = ["time", "code", "Historical_alpha"]
     factor = pd.merge(beta, hist_sigma)
     factor = factor.merge(hist_alpha)
+    
+    print('factor shape 1', factor[factor.time == 20221228].shape)
 
     # EWMA daily std
     init_var = ret.var(axis=0)
@@ -297,6 +306,7 @@ def cal_volatility_opt(ret, close, pre_close, start_date=None, end_date=None, wi
     daily_std = pd.melt(daily_std.reset_index(), id_vars="time", value_name="Daily_std").dropna()
 
     factor = factor.merge(daily_std)
+    print('factor shape 2', factor[factor.time == 20221228].shape)
 
     close = close.fillna(method="ffill", limit=10)
     pre_close = pre_close.fillna(method="ffill", limit=10)
@@ -317,6 +327,8 @@ def cal_volatility_opt(ret, close, pre_close, start_date=None, end_date=None, wi
     CMRA = pd.melt(CMRA.reset_index(), id_vars="time", value_name="Cumulative_range").dropna()
 
     factor = factor.merge(CMRA)
+    print('factor shape 3', factor[factor.time == 20221228].shape)
+    
     return factor.sort_values(by=["time", "code"])
 
 
@@ -447,6 +459,11 @@ def main():
             end_date=end_date,
         )
 
+    # from IPython import embed
+    # embed()
+    target_sym = "000001.SZE"
+    target_present = target_sym in symbols
+
     # write to daily.hdf
     with h5.File(args.daily, "a") as f:
         for col in ["BETA", "Hist_sigma", "Historical_alpha", "Daily_std", "Cumulative_range", "Volatility"]:
@@ -456,9 +473,14 @@ def main():
         total = end_idx - start_idx
         update_mask = szsh_mask
         for i, date in enumerate(dates[start_idx:end_idx]):
+            print('assigning date ', date)
             x = data[data.time == date]
             x.index = x.code
             y = x.reindex(symbols)
+            if target_present:
+                beta_val = y.loc[target_sym, "BETA"] if "BETA" in y.columns else np.nan
+                if not np.isfinite(beta_val):
+                    print(f"nan BETA for {target_sym} at {int(date)}")
             if y.shape[0] > 0:
                 idx = np.searchsorted(dates, date)
                 f["BETA"][idx, update_mask] = y["BETA"].values.astype(float)[update_mask]
